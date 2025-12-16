@@ -5,8 +5,8 @@ import seaborn as sns
 import plotly.express as px
 from mlxtend.frequent_patterns import apriori, association_rules
 
-st.set_page_config(page_title="Groceries Analytics Dashboard", layout="wide")
-st.title("🛍️ Groceries Analytics Dashboard (Kaggle Dataset)")
+st.set_page_config(page_title="Groceries Transaction Dataset", layout="wide")
+st.title("🛍️ Groceries Analytics Dashboard ")
 
 # -------------------------
 # Load and preprocess data
@@ -225,3 +225,4 @@ with tabs[8]:
         st.info(f"No co-occurring items found for '{selected_item_combo}'.")
 
 st.caption("📘 Dashboard: Raw Data | Unique Items & Customers | Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations | Top Bundles & Item Combos")
+
