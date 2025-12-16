@@ -141,7 +141,6 @@ st.divider()
 # Interactive Rule Strength Visualization (Plotly)
 # --------------------------------
 st.subheader("📈 Interactive Rule Strength Visualization")
-
 if len(filtered_rules) > 0:
     fig2 = px.scatter(
         filtered_rules,
@@ -164,7 +163,41 @@ if len(filtered_rules) > 0:
 else:
     st.info("No rules to display in the plot with current filters.")
 
+st.divider()
+
+# --------------------------------
+# Rule Recommendation System (Market Basket Assistant)
+# --------------------------------
+st.subheader("🛍️ Market Basket Recommendations")
+
+selected_items = st.multiselect(
+    "Select items you have in your basket:",
+    options=basket.columns
+)
+
+if selected_items:
+    recommended_rules = filtered_rules[
+        filtered_rules["antecedents"].apply(lambda x: any(item in x.split(", ") for item in selected_items))
+    ].sort_values(by=["confidence", "lift"], ascending=False)
+
+    if not recommended_rules.empty:
+        top_recommendations = recommended_rules.head(10)
+        st.write(f"**Top recommendations based on your selection ({', '.join(selected_items)}):**")
+        st.dataframe(top_recommendations[["antecedents", "consequents", "support", "confidence", "lift"]], use_container_width=True)
+
+        # Aggregate suggested items
+        suggested_items = set()
+        for cons in top_recommendations["consequents"]:
+            suggested_items.update(cons.split(", "))
+        suggested_items = [item for item in suggested_items if item not in selected_items]
+
+        st.markdown(f"**Suggested items to consider:** {', '.join(suggested_items)}")
+    else:
+        st.info("No recommendations found for the selected items with current filters.")
+else:
+    st.info("Select one or more items from the basket to get recommendations.")
+
 # --------------------------------
 # Footer
 # --------------------------------
-st.caption("📘 Association Rule Mining Dashboard | Automatic Insight Generation | Interactive Plots")
+st.caption("📘 Association Rule Mining Dashboard | Automatic Insights | Market Basket Assistant | Interactive Plots")
