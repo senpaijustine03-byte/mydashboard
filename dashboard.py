@@ -9,12 +9,6 @@ from mlxtend.frequent_patterns import apriori, association_rules
 # Page Config
 # -------------------------
 st.set_page_config(page_title="Groceries Analytics Dashboard", layout="wide")
-st.markdown("""
-<style>
-body {background-color: #f9f9f9;}
-h1 {color: #2c3e50;}
-</style>
-""", unsafe_allow_html=True)
 st.title("🛍️ Groceries Analytics Dashboard (Kaggle Dataset)")
 st.markdown("Clean, interactive dashboard with insights from the Groceries dataset.")
 
@@ -34,24 +28,32 @@ data = load_data()
 # Sidebar Filters
 # -------------------------
 st.sidebar.header("🔎 Filters")
+
+# Date range filter (ensure default covers full dataset)
 min_date = data['timestamp'].min().date()
 max_date = data['timestamp'].max().date()
 date_range = st.sidebar.date_input("Select date range:", [min_date, max_date])
+
+# Optional item filter
 item_cols = data['itemDescription'].unique().tolist()
 selected_items_sidebar = st.sidebar.multiselect(
     "Filter by items (optional):",
     options=item_cols,
     default=[]
 )
+
+# Apply filters
 filtered_data = data[
     (data['timestamp'].dt.date >= date_range[0]) &
     (data['timestamp'].dt.date <= date_range[1])
 ]
 if selected_items_sidebar:
     filtered_data = filtered_data[filtered_data['itemDescription'].isin(selected_items_sidebar)]
+
+# Warn if no data
 if filtered_data.empty:
-    st.warning("⚠️ No data available for the selected filters.")
-    st.stop()
+    st.warning("⚠️ No data available for the selected date range/items. Please adjust filters.")
+    st.stop()  # Stop further execution
 
 # -------------------------
 # One-hot encode basket
@@ -81,14 +83,14 @@ def generate_rules(basket_oh):
 rules = generate_rules(basket_oh)
 
 # -------------------------
-# Key Metrics with color
+# Key Metrics
 # -------------------------
 st.subheader("📊 Key Metrics")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric(label="Total Transactions", value=len(filtered_data['order_id'].unique()), delta_color="inverse")
-col2.metric(label="Total Customers", value=filtered_data['Member_number'].nunique())
-col3.metric(label="Total Unique Items", value=filtered_data['itemDescription'].nunique())
-col4.metric(label="Avg Items / Transaction", value=f"{basket_oh.sum(axis=1).mean():.2f}")
+col1.metric("Total Transactions", len(filtered_data['order_id'].unique()))
+col2.metric("Total Customers", filtered_data['Member_number'].nunique())
+col3.metric("Total Unique Items", filtered_data['itemDescription'].nunique())
+col4.metric("Avg Items / Transaction", f"{basket_oh.sum(axis=1).mean():.2f}")
 st.markdown("---")
 
 # -------------------------
@@ -106,19 +108,19 @@ tabs = st.tabs([
 with tabs[0]:
     st.subheader("📋 Raw Dataset Preview")
     st.dataframe(filtered_data.head(50))
-    st.info(f"Total rows: {len(filtered_data)}")
+    st.write(f"Total rows: {len(filtered_data)}")
 
 # -------------------------
 # 1️⃣ Unique Items & Customers
 # -------------------------
 with tabs[1]:
-    st.subheader("🛒 Unique Items")
+    st.subheader("🛒 All Unique Items")
     st.dataframe(pd.DataFrame(filtered_data['itemDescription'].unique(), columns=["ItemDescription"]))
-    st.metric("Total unique items", filtered_data['itemDescription'].nunique())
+    st.write(f"Total unique items: {filtered_data['itemDescription'].nunique()}")
 
-    st.subheader("👥 Unique Customers")
+    st.subheader("👥 All Unique Customers")
     st.dataframe(pd.DataFrame(filtered_data['Member_number'].unique(), columns=["CustomerID"]))
-    st.metric("Total unique customers", filtered_data['Member_number'].nunique())
+    st.write(f"Total unique customers: {filtered_data['Member_number'].nunique()}")
 
 # -------------------------
 # 2️⃣ Transactions Overview
@@ -126,41 +128,41 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("📈 Transactions Over Time")
     time_group = st.radio("Aggregate by:", ["Daily", "Weekly", "Monthly"])
+
     if time_group == "Daily":
         trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.date)['order_id'].count().reset_index()
         trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
         trans_time['timestamp'] = pd.to_datetime(trans_time['timestamp'])
+        x_col = 'timestamp'
     elif time_group == "Weekly":
         trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.isocalendar().week)['order_id'].count().reset_index()
         trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
         trans_time['timestamp'] = pd.to_datetime(filtered_data['timestamp'])
+        x_col = 'timestamp'
     else:
         trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.to_period("M"))['order_id'].count().reset_index()
         trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
         trans_time['timestamp'] = trans_time['timestamp'].astype(str)
+        x_col = 'timestamp'
 
-    fig = px.line(trans_time, x='timestamp', y='transactions', 
-                  title="Transactions Over Time", template="plotly_white", markers=True, color_discrete_sequence=['#2ca02c'])
+    fig = px.line(trans_time, x=x_col, y='transactions', title="Transactions Over Time", template="plotly_white")
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("📅 Peak Transaction Days")
     peak_days = filtered_data['timestamp'].dt.day_name().value_counts()
     fig_peak = px.bar(peak_days, x=peak_days.index, y=peak_days.values,
-                      labels={'x':'Day of Week','y':'Transactions'}, 
-                      title="Transactions by Day of Week", template="plotly_white",
-                      color_discrete_sequence=['#1f77b4'])
+                      labels={'x':'Day of Week','y':'Transactions'}, title="Transactions by Day of Week", template="plotly_white")
     st.plotly_chart(fig_peak, use_container_width=True)
 
 # -------------------------
 # 3️⃣ Top Items
 # -------------------------
 with tabs[3]:
-    st.subheader("🛒 Top Items")
+    st.subheader("🛒 Top Items by Frequency")
     item_freq = basket_oh.sum().sort_values(ascending=False)
     top_n = st.slider("Top items to show:", 5, 30, 10)
     fig2 = px.bar(item_freq.head(top_n), x=item_freq.head(top_n).index, y=item_freq.head(top_n).values,
-                  labels={'x':'Item','y':'Count'}, title="Top Items by Transaction Count", template="plotly_white",
-                  color_discrete_sequence=['#ff7f0e'])
+                  labels={'x':'Item','y':'Count'}, title="Top Items by Transaction Count", template="plotly_white")
     st.plotly_chart(fig2, use_container_width=True)
 
 # -------------------------
@@ -171,27 +173,24 @@ with tabs[4]:
     cust_orders = filtered_data.groupby('Member_number')['order_id'].nunique()
     repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
     fig3 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values,
-                  title="Repeat vs First-time Customers", template="plotly_white",
-                  color_discrete_sequence=['#d62728', '#9467bd'])
+                  title="Repeat vs First-time Customers", template="plotly_white")
     st.plotly_chart(fig3, use_container_width=True)
 
 # -------------------------
 # 5️⃣ Seasonal Trends
 # -------------------------
 with tabs[5]:
-    st.subheader("📅 Monthly Trends")
+    st.subheader("📅 Monthly Seasonal Trends")
     monthly_sales = filtered_data.groupby(filtered_data['timestamp'].dt.month)['order_id'].count()
     fig4 = px.line(monthly_sales, x=monthly_sales.index, y=monthly_sales.values,
-                   labels={'x':'Month', 'y':'Number of Transactions'}, 
-                   title="Monthly Transaction Trend", template="plotly_white",
-                   markers=True, color_discrete_sequence=['#17becf'])
+                   labels={'x':'Month', 'y':'Number of Transactions'}, title="Monthly Transaction Trend", template="plotly_white")
     st.plotly_chart(fig4, use_container_width=True)
 
 # -------------------------
 # 6️⃣ Item Co-occurrence
 # -------------------------
 with tabs[6]:
-    st.subheader("📊 Top 20 Item Co-occurrence")
+    st.subheader("📊 Top 20 Item Co-occurrence Heatmap")
     if not basket_oh.empty:
         basket_items = basket_oh.astype(float)
         top_items = basket_items.sum().sort_values(ascending=False).head(20).index
@@ -202,16 +201,17 @@ with tabs[6]:
         ax5.set_title("Item Co-occurrence (% of transactions)")
         st.pyplot(fig5)
     else:
-        st.info("No data available for co-occurrence heatmap.")
+        st.info("No transactions available for co-occurrence heatmap.")
 
 # -------------------------
 # 7️⃣ Basket Recommendations
 # -------------------------
 with tabs[7]:
-    st.subheader("🛍️ Basket Recommendations")
-    selected_items = st.multiselect("Select items:", options=item_cols_filtered)
+    st.subheader("🛍️ Market Basket Recommendations")
+    selected_items = st.multiselect("Select items in your basket:", options=item_cols_filtered)
     min_conf = st.slider("Minimum confidence", 0.0, 1.0, 0.3)
     min_lift = st.slider("Minimum lift", 0.0, 5.0, 1.0)
+
     if not rules.empty and selected_items:
         recommended_rules = rules[
             (rules["antecedents"].apply(lambda x: any(item in x.split(", ") for item in selected_items))) &
@@ -219,31 +219,45 @@ with tabs[7]:
             (rules["lift"] >= min_lift)
         ]
         if not recommended_rules.empty:
-            st.dataframe(recommended_rules[['antecedents','consequents','support','confidence','lift']])
+            top_recs = recommended_rules.sort_values(by=['confidence','lift'], ascending=False).head(10)
+            st.write(f"**Top recommendations for ({', '.join(selected_items)}):**")
+            st.dataframe(top_recs[['antecedents','consequents','support','confidence','lift']])
+            suggested_items = set()
+            for cons in top_recs['consequents']:
+                suggested_items.update(cons.split(", "))
+            suggested_items = [item for item in suggested_items if item not in selected_items]
+            st.markdown(f"**Suggested items:** {', '.join(suggested_items)}")
         else:
-            st.info("No matching recommendations found.")
+            st.info("No recommendations found for the selected items.")
     else:
-        st.info("No rules available or select items.")
+        st.info("No rules available or select items from the basket.")
 
 # -------------------------
-# 8️⃣ Top Bundles
+# 8️⃣ Top Bundles & Item Combos
 # -------------------------
 with tabs[8]:
-    st.subheader("📦 Top Bundles")
+    st.subheader("📦 Top Bundles & Frequently Bought Together")
     if not basket_oh.empty:
-        selected_item_combo = st.selectbox("Select item for bundles:", options=item_cols_filtered)
+        selected_item_combo = st.selectbox("Select an item to see popular bundles:", options=item_cols_filtered)
         top_n_bundles = st.slider("Top bundles to show:", 3, 15, 5)
-        transactions_with_item = basket_oh[basket_oh[selected_item_combo]==1]
+
+        transactions_with_item = basket_oh[basket_oh[selected_item_combo] == 1]
         co_occurring_counts = transactions_with_item.sum().sort_values(ascending=False)
         co_occurring_counts = co_occurring_counts.drop(labels=[selected_item_combo])
+
         if not co_occurring_counts.empty:
             top_co_occurring = co_occurring_counts.head(top_n_bundles)
-            fig_bundle = px.bar(top_co_occurring, x=top_co_occurring.index, y=top_co_occurring.values,
-                                labels={'x':'Item','y':'Count'}, title=f"Top {top_n_bundles} items bought with {selected_item_combo}",
-                                template="plotly_white", color_discrete_sequence=['#bcbd22'])
+            fig_bundle = px.bar(
+                top_co_occurring,
+                x=top_co_occurring.index,
+                y=top_co_occurring.values,
+                labels={'x':'Item', 'y':'Number of Co-occurrences'},
+                title=f"Top {top_n_bundles} items bought together with '{selected_item_combo}'",
+                template="plotly_white"
+            )
             st.plotly_chart(fig_bundle, use_container_width=True)
         else:
-            st.info("No co-occurring items found.")
+            st.info(f"No co-occurring items found for '{selected_item_combo}'.")
     else:
         st.info("No transactions available for bundles.")
 
