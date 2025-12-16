@@ -13,12 +13,12 @@ st.title("🛍️ Online Retail Analytics Dashboard")
 # -------------------------
 @st.cache_data
 def load_data():
-    # Load your existing CSVs
+    # Load your CSVs
     basket = pd.read_csv("groceries_basket.csv", index_col=0)
     rules = pd.read_csv("association_rules.csv")
     rules.columns = rules.columns.str.strip().str.lower()
 
-    # Simulate extra columns if missing
+    # Simulate additional columns if missing
     np.random.seed(42)
     basket['order_id'] = basket.index
     basket['customer_id'] = np.random.randint(1, basket.shape[0]//2, size=basket.shape[0])
@@ -40,24 +40,30 @@ basket, rules = load_data()
 tabs = st.tabs(["Sales & Revenue", "Customer Behavior", "Product Performance", "Marketing & Engagement", "Basket Analysis"])
 
 # -------------------------
+# Item columns
+# -------------------------
+item_cols = [col for col in basket.columns if col not in ['order_id','customer_id','timestamp','city','promotion','return','price']]
+
+# -------------------------
 # 1️⃣ Sales & Revenue
 # -------------------------
 with tabs[0]:
     st.subheader("💰 Sales & Revenue Overview")
-    # Total revenue per order
-    item_cols = [col for col in basket.columns if col not in ['order_id','customer_id','timestamp','city','promotion','return','price']]
     basket['revenue'] = basket[item_cols].sum(axis=1) * basket['price']
 
     # Aggregate by time
     time_group = st.radio("Aggregate revenue by:", ["Daily", "Monthly", "Yearly"])
     if time_group == "Daily":
         revenue_time = basket.groupby(basket['timestamp'].dt.date)['revenue'].sum().reset_index()
+        revenue_time['timestamp'] = pd.to_datetime(revenue_time['timestamp'])
         x_col = 'timestamp'
     elif time_group == "Monthly":
         revenue_time = basket.groupby(basket['timestamp'].dt.to_period("M"))['revenue'].sum().reset_index()
+        revenue_time['timestamp'] = revenue_time['timestamp'].astype(str)
         x_col = 'timestamp'
     else:
         revenue_time = basket.groupby(basket['timestamp'].dt.to_period("Y"))['revenue'].sum().reset_index()
+        revenue_time['timestamp'] = revenue_time['timestamp'].astype(str)
         x_col = 'timestamp'
 
     fig = px.line(revenue_time, x=x_col, y='revenue', title="Revenue Over Time")
@@ -100,13 +106,11 @@ with tabs[1]:
 # -------------------------
 with tabs[2]:
     st.subheader("📦 Product Performance")
-    # Return rates
     return_rates = basket[item_cols].multiply(basket['return'], axis=0).sum().sort_values(ascending=False)
     fig6 = px.bar(return_rates.head(top_n), x=return_rates.head(top_n).index, y=return_rates.head(top_n).values, 
                   title="Top Products by Return Rate")
     st.plotly_chart(fig6, use_container_width=True)
 
-    # Co-occurrence heatmap
     st.subheader("Item Co-occurrence Heatmap")
     basket_items = basket[item_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
     co_occurrence = basket_items.T.dot(basket_items)
