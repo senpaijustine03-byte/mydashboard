@@ -4,113 +4,106 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 
-st.set_page_config(page_title="Groceries Dashboard", layout="wide")
-st.title("🛒 Groceries Transaction Dashboard")
+st.set_page_config(page_title="Online Retail Dashboard", layout="wide")
+st.title("🛍️ Online Retail Analytics Dashboard")
 
 # -------------------------
 # Load Data
 # -------------------------
 @st.cache_data
 def load_data():
-    basket = pd.read_csv("groceries_basket.csv", index_col=0)
-    rules = pd.read_csv("association_rules.csv")
-    rules.columns = rules.columns.str.strip().str.lower()
-    return basket, rules
+    # Replace with your dataset
+    orders = pd.read_csv("groceries_full.csv", parse_dates=["timestamp"])  # timestamp column needed
+    return orders
 
-basket, rules = load_data()
+orders = load_data()
+
+# Normalize columns
+orders.columns = orders.columns.str.strip().str.lower()
 
 # -------------------------
-# KPI Metrics
+# KPI Section
 # -------------------------
 st.subheader("📌 Key Metrics")
-total_transactions = basket.shape[0]
-total_items = basket.shape[1]
-avg_basket_size = basket.sum(axis=1).mean()
+total_sales = (orders['quantity'] * orders['price']).sum()
+total_orders = orders['order_id'].nunique()
+average_order_value = total_sales / total_orders
+repeat_customers = orders.groupby('customer_id')['order_id'].nunique()
+repeat_pct = (repeat_customers > 1).mean() * 100
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Total Transactions", total_transactions)
-c2.metric("Total Items", total_items)
-c3.metric("Average Basket Size", f"{avg_basket_size:.2f}")
-
-st.divider()
-
-# -------------------------
-# Top Items by Frequency
-# -------------------------
-st.subheader("📦 Top Items by Frequency")
-item_counts = basket.sum().sort_values(ascending=False)
-top_n = st.slider("Select number of top items to show", 5, 30, 15)
-
-fig1, ax1 = plt.subplots(figsize=(10,5))
-item_counts.head(top_n).plot(kind="bar", ax=ax1, color="skyblue")
-ax1.set_ylabel("Frequency")
-ax1.set_title(f"Top {top_n} Items Purchased")
-st.pyplot(fig1)
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total Revenue", f"${total_sales:,.2f}")
+c2.metric("Total Orders", f"{total_orders}")
+c3.metric("Average Order Value", f"${average_order_value:,.2f}")
+c4.metric("Repeat Customers %", f"{repeat_pct:.1f}%")
 
 st.divider()
 
 # -------------------------
-# Basket Size Distribution
+# 1️⃣ Sales & Revenue
 # -------------------------
-st.subheader("🛒 Basket Size Distribution")
-basket_sizes = basket.sum(axis=1)
-
-fig2, ax2 = plt.subplots(figsize=(10,5))
-sns.histplot(basket_sizes, bins=20, kde=True, color="orange", ax=ax2)
-ax2.set_xlabel("Number of Items per Basket")
-ax2.set_ylabel("Number of Transactions")
-ax2.set_title("Basket Size Distribution")
-st.pyplot(fig2)
-
-st.write(f"Average basket size: **{avg_basket_size:.2f}** items per transaction")
-st.divider()
-
-# -------------------------
-# Item Pair Co-occurrence Heatmap
-# -------------------------
-st.subheader("📊 Item Co-occurrence Heatmap")
-heatmap_top_n = st.slider("Top items for co-occurrence", 5, 30, 15)
-top_items = item_counts.head(heatmap_top_n).index.tolist()
-basket_top = basket[top_items]
-
-co_occurrence = basket_top.T.dot(basket_top)
-co_occurrence_pct = co_occurrence / basket.shape[0] * 100
-
-fig3, ax3 = plt.subplots(figsize=(12,10))
-sns.heatmap(co_occurrence_pct, annot=True, fmt=".1f", cmap="YlGnBu", ax=ax3)
-ax3.set_title("Item Co-occurrence (% of transactions)")
-st.pyplot(fig3)
-
-st.divider()
-
-# -------------------------
-# Market Basket Recommendations
-# -------------------------
-st.subheader("🛍️ Market Basket Recommendations")
-selected_items = st.multiselect("Select items in your basket:", options=basket.columns)
-
-if selected_items:
-    # Filter rules with selected items in antecedents
-    recommended_rules = rules[
-        rules["antecedents"].apply(lambda x: any(item in x.split(", ") for item in selected_items))
-    ]
-    sort_cols = [col for col in ["confidence", "lift"] if col in recommended_rules.columns]
-    if sort_cols:
-        recommended_rules = recommended_rules.sort_values(by=sort_cols, ascending=False)
-
-    if not recommended_rules.empty:
-        top_recs = recommended_rules.head(10)
-        st.write(f"**Top recommendations for ({', '.join(selected_items)}):**")
-        st.dataframe(top_recs[["antecedents","consequents","support","confidence","lift"]], use_container_width=True)
-
-        suggested_items = set()
-        for cons in top_recs["consequents"]:
-            suggested_items.update(cons.split(", "))
-        suggested_items = [item for item in suggested_items if item not in selected_items]
-        st.markdown(f"**Suggested items:** {', '.join(suggested_items)}")
-    else:
-        st.info("No recommendations found for the selected items.")
+st.subheader("💰 Sales & Revenue Over Time")
+time_group = st.radio("Aggregate by:", ["Daily", "Monthly", "Yearly"])
+if time_group == "Daily":
+    sales_time = orders.groupby(orders['timestamp'].dt.date)['quantity','price'].apply(lambda x: (x['quantity']*x['price']).sum()).reset_index()
+    x_col = 'timestamp'
+elif time_group == "Monthly":
+    sales_time = orders.groupby(orders['timestamp'].dt.to_period("M"))['quantity','price'].apply(lambda x: (x['quantity']*x['price']).sum()).reset_index()
+    x_col = 'timestamp'
 else:
-    st.info("Select items from the basket to get recommendations.")
+    sales_time = orders.groupby(orders['timestamp'].dt.to_period("Y"))['quantity','price'].apply(lambda x: (x['quantity']*x['price']).sum()).reset_index()
+    x_col = 'timestamp'
 
-st.caption("📘 Dashboard: Basket Analysis | Co-occurrence Heatmap | Recommendations")
+fig1 = px.line(sales_time, x=x_col, y='price', title="Revenue Over Time")
+st.plotly_chart(fig1, use_container_width=True)
+
+# Top Products by Revenue
+st.subheader("🛒 Top Products by Revenue")
+orders['revenue'] = orders['quantity'] * orders['price']
+top_products = orders.groupby('product_name')['revenue'].sum().sort_values(ascending=False).head(15)
+fig2 = px.bar(top_products, x=top_products.index, y='revenue', title="Top 15 Products by Revenue")
+st.plotly_chart(fig2, use_container_width=True)
+
+st.divider()
+
+# -------------------------
+# 2️⃣ Customer Behavior
+# -------------------------
+st.subheader("👥 Customer Behavior")
+top_cities = orders.groupby('city')['order_id'].nunique().sort_values(ascending=False).head(10)
+fig3 = px.bar(top_cities, x=top_cities.index, y=top_cities.values, title="Top 10 Cities by Purchase Activity")
+st.plotly_chart(fig3, use_container_width=True)
+
+# Repeat vs New customers
+repeat_status = orders.groupby('customer_id')['order_id'].nunique().apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
+fig4 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values, title="Repeat vs First-time Customers")
+st.plotly_chart(fig4, use_container_width=True)
+
+st.divider()
+
+# -------------------------
+# 3️⃣ Product Performance
+# -------------------------
+st.subheader("📦 Product Performance")
+if 'return' in orders.columns:
+    return_rates = orders.groupby('product_name')['return'].mean().sort_values(ascending=False).head(15)
+    fig5 = px.bar(return_rates, x=return_rates.index, y='return', title="Top 15 Products by Return Rate")
+    st.plotly_chart(fig5, use_container_width=True)
+
+if 'stock' in orders.columns:
+    out_of_stock = orders[orders['stock'] == 0].groupby('product_name')['order_id'].count().sort_values(ascending=False).head(10)
+    fig6 = px.bar(out_of_stock, x=out_of_stock.index, y=out_of_stock.values, title="Top Products Out of Stock")
+    st.plotly_chart(fig6, use_container_width=True)
+
+st.divider()
+
+# -------------------------
+# 4️⃣ Marketing & Engagement (simulated)
+# -------------------------
+st.subheader("📣 Marketing & Engagement")
+if 'promotion' in orders.columns:
+    promo_sales = orders.groupby('promotion')['revenue'].sum()
+    fig7 = px.bar(promo_sales, x=promo_sales.index, y='revenue', title="Revenue by Promotion Type")
+    st.plotly_chart(fig7, use_container_width=True)
+
+st.caption("📘 Online Retail Dashboard: Sales, Customer Behavior, Product Performance, Marketing Insights")
