@@ -21,7 +21,7 @@ def load_data():
 data = load_data()
 
 # -------------------------
-# One-hot encode basket for co-occurrence & Apriori
+# One-hot encode basket
 # -------------------------
 basket_oh = data.groupby(['Member_number', 'itemDescription'])['itemDescription']\
                 .count().unstack().fillna(0)
@@ -42,15 +42,36 @@ def generate_rules(basket_oh):
 rules = generate_rules(basket_oh)
 
 # -------------------------
-# Tabs for organized dashboard
+# Tabs
 # -------------------------
-tabs = st.tabs(["Transactions Overview", "Top Items", "Customer Behavior",
-                "Seasonal Trends", "Item Co-occurrence", "Basket Recommendations"])
+tabs = st.tabs(["Raw Data", "Unique Items & Customers", "Transactions Overview", 
+                "Top Items", "Customer Behavior", "Seasonal Trends", 
+                "Item Co-occurrence", "Basket Recommendations"])
 
 # -------------------------
-# 1️⃣ Transactions Overview
+# 0️⃣ Raw Data
 # -------------------------
 with tabs[0]:
+    st.subheader("📋 Raw Dataset Preview")
+    st.dataframe(data.head(50))
+    st.write(f"Total rows: {len(data)}")
+
+# -------------------------
+# 1️⃣ Unique Items & Customers
+# -------------------------
+with tabs[1]:
+    st.subheader("🛒 All Unique Items")
+    st.dataframe(pd.DataFrame(data['itemDescription'].unique(), columns=["ItemDescription"]))
+    st.write(f"Total unique items: {data['itemDescription'].nunique()}")
+
+    st.subheader("👥 All Unique Customers")
+    st.dataframe(pd.DataFrame(data['Member_number'].unique(), columns=["CustomerID"]))
+    st.write(f"Total unique customers: {data['Member_number'].nunique()}")
+
+# -------------------------
+# 2️⃣ Transactions Overview
+# -------------------------
+with tabs[2]:
     st.subheader("📈 Transactions Over Time")
     time_group = st.radio("Aggregate by:", ["Daily", "Monthly", "Yearly"])
     if time_group == "Daily":
@@ -73,9 +94,9 @@ with tabs[0]:
     st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------
-# 2️⃣ Top Items
+# 3️⃣ Top Items
 # -------------------------
-with tabs[1]:
+with tabs[3]:
     st.subheader("🛒 Top Items by Frequency")
     item_freq = basket_oh.sum().sort_values(ascending=False)
     top_n = st.slider("Top items to show:", 5, 30, 10)
@@ -84,9 +105,9 @@ with tabs[1]:
     st.plotly_chart(fig2, use_container_width=True)
 
 # -------------------------
-# 3️⃣ Customer Behavior
+# 4️⃣ Customer Behavior
 # -------------------------
-with tabs[2]:
+with tabs[4]:
     st.subheader("👥 Customer Behavior")
     cust_orders = data.groupby('Member_number')['order_id'].nunique()
     repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
@@ -95,9 +116,9 @@ with tabs[2]:
     st.plotly_chart(fig3, use_container_width=True)
 
 # -------------------------
-# 4️⃣ Seasonal Trends
+# 5️⃣ Seasonal Trends
 # -------------------------
-with tabs[3]:
+with tabs[5]:
     st.subheader("📅 Monthly Seasonal Trends")
     monthly_sales = data.groupby(data['timestamp'].dt.month)['order_id'].count()
     fig4 = px.line(monthly_sales, x=monthly_sales.index, y=monthly_sales.values,
@@ -105,9 +126,9 @@ with tabs[3]:
     st.plotly_chart(fig4, use_container_width=True)
 
 # -------------------------
-# 5️⃣ Item Co-occurrence
+# 6️⃣ Item Co-occurrence
 # -------------------------
-with tabs[4]:
+with tabs[6]:
     st.subheader("📊 Item Co-occurrence Heatmap")
     basket_items = basket_oh.astype(float)
     co_occurrence = basket_items.T.dot(basket_items)
@@ -118,9 +139,9 @@ with tabs[4]:
     st.pyplot(fig5)
 
 # -------------------------
-# 6️⃣ Market Basket Recommendations
+# 7️⃣ Market Basket Recommendations
 # -------------------------
-with tabs[5]:
+with tabs[7]:
     st.subheader("🛍️ Market Basket Recommendations")
     selected_items = st.multiselect("Select items in your basket:", options=item_cols)
 
@@ -142,4 +163,4 @@ with tabs[5]:
     else:
         st.info("Select items from the basket to get recommendations.")
 
-st.caption("📘 Dashboard: Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations")
+st.caption("📘 Dashboard: Raw Data | Unique Items & Customers | Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations")
