@@ -21,7 +21,7 @@ def load_data():
 data = load_data()
 
 # -------------------------
-# One-hot encode basket
+# One-hot encode basket for co-occurrence & Apriori
 # -------------------------
 basket_oh = data.groupby(['Member_number', 'itemDescription'])['itemDescription']\
                 .count().unstack().fillna(0)
@@ -29,7 +29,7 @@ basket_oh = basket_oh.applymap(lambda x: 1 if x > 0 else 0)
 item_cols = basket_oh.columns.tolist()
 
 # -------------------------
-# Generate real association rules
+# Generate association rules
 # -------------------------
 @st.cache_data
 def generate_rules(basket_oh):
@@ -42,9 +42,10 @@ def generate_rules(basket_oh):
 rules = generate_rules(basket_oh)
 
 # -------------------------
-# Tabs
+# Tabs for organized dashboard
 # -------------------------
-tabs = st.tabs(["Transactions Overview", "Top Items", "Item Co-occurrence", "Basket Recommendations"])
+tabs = st.tabs(["Transactions Overview", "Top Items", "Customer Behavior",
+                "Seasonal Trends", "Item Co-occurrence", "Basket Recommendations"])
 
 # -------------------------
 # 1️⃣ Transactions Overview
@@ -83,22 +84,43 @@ with tabs[1]:
     st.plotly_chart(fig2, use_container_width=True)
 
 # -------------------------
-# 3️⃣ Item Co-occurrence Heatmap
+# 3️⃣ Customer Behavior
 # -------------------------
 with tabs[2]:
+    st.subheader("👥 Customer Behavior")
+    cust_orders = data.groupby('Member_number')['order_id'].nunique()
+    repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
+    fig3 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values,
+                  title="Repeat vs First-time Customers")
+    st.plotly_chart(fig3, use_container_width=True)
+
+# -------------------------
+# 4️⃣ Seasonal Trends
+# -------------------------
+with tabs[3]:
+    st.subheader("📅 Monthly Seasonal Trends")
+    monthly_sales = data.groupby(data['timestamp'].dt.month)['order_id'].count()
+    fig4 = px.line(monthly_sales, x=monthly_sales.index, y=monthly_sales.values,
+                   labels={'x':'Month', 'y':'Number of Transactions'}, title="Monthly Transaction Trend")
+    st.plotly_chart(fig4, use_container_width=True)
+
+# -------------------------
+# 5️⃣ Item Co-occurrence
+# -------------------------
+with tabs[4]:
     st.subheader("📊 Item Co-occurrence Heatmap")
     basket_items = basket_oh.astype(float)
     co_occurrence = basket_items.T.dot(basket_items)
     co_occurrence_pct = (co_occurrence / basket_items.shape[0] * 100).astype(float)
-    fig3, ax3 = plt.subplots(figsize=(12,10))
-    sns.heatmap(co_occurrence_pct, annot=False, fmt=".1f", cmap="YlGnBu", ax=ax3)
-    ax3.set_title("Item Co-occurrence (% of transactions)")
-    st.pyplot(fig3)
+    fig5, ax5 = plt.subplots(figsize=(12,10))
+    sns.heatmap(co_occurrence_pct, annot=False, fmt=".1f", cmap="YlGnBu", ax=ax5)
+    ax5.set_title("Item Co-occurrence (% of transactions)")
+    st.pyplot(fig5)
 
 # -------------------------
-# 4️⃣ Market Basket Recommendations
+# 6️⃣ Market Basket Recommendations
 # -------------------------
-with tabs[3]:
+with tabs[5]:
     st.subheader("🛍️ Market Basket Recommendations")
     selected_items = st.multiselect("Select items in your basket:", options=item_cols)
 
@@ -120,4 +142,4 @@ with tabs[3]:
     else:
         st.info("Select items from the basket to get recommendations.")
 
-st.caption("📘 Dashboard: Transactions | Top Items | Co-occurrence | Recommendations")
+st.caption("📘 Dashboard: Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations")
