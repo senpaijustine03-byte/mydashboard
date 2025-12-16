@@ -5,8 +5,12 @@ import seaborn as sns
 import plotly.express as px
 from mlxtend.frequent_patterns import apriori, association_rules
 
+# -------------------------
+# Page Config
+# -------------------------
 st.set_page_config(page_title="Groceries Analytics Dashboard", layout="wide")
 st.title("🛍️ Groceries Analytics Dashboard (Kaggle Dataset)")
+st.markdown("Clean, interactive dashboard with insights from the Groceries dataset.")
 
 # -------------------------
 # Load and preprocess data
@@ -21,12 +25,39 @@ def load_data():
 data = load_data()
 
 # -------------------------
+# Sidebar Filters
+# -------------------------
+st.sidebar.header("🔎 Filters")
+
+# Date range filter
+min_date = data['timestamp'].min()
+max_date = data['timestamp'].max()
+date_range = st.sidebar.date_input("Select date range:", [min_date, max_date])
+
+# Filter by items (optional)
+item_cols = data['itemDescription'].unique().tolist()
+selected_items_sidebar = st.sidebar.multiselect(
+    "Filter by items (optional):",
+    options=item_cols,
+    default=[]
+)
+
+# Apply filters
+filtered_data = data[
+    (data['timestamp'].dt.date >= date_range[0]) &
+    (data['timestamp'].dt.date <= date_range[1])
+]
+
+if selected_items_sidebar:
+    filtered_data = filtered_data[filtered_data['itemDescription'].isin(selected_items_sidebar)]
+
+# -------------------------
 # One-hot encode basket
 # -------------------------
-basket_oh = data.groupby(['Member_number', 'itemDescription'])['itemDescription']\
+basket_oh = filtered_data.groupby(['Member_number', 'itemDescription'])['itemDescription']\
                 .count().unstack().fillna(0)
 basket_oh = basket_oh.applymap(lambda x: 1 if x > 0 else 0)
-item_cols = basket_oh.columns.tolist()
+item_cols_filtered = basket_oh.columns.tolist()
 
 # -------------------------
 # Generate association rules
@@ -42,12 +73,23 @@ def generate_rules(basket_oh):
 rules = generate_rules(basket_oh)
 
 # -------------------------
+# Key Metrics
+# -------------------------
+st.subheader("📊 Key Metrics")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Transactions", len(filtered_data['order_id'].unique()))
+col2.metric("Total Customers", filtered_data['Member_number'].nunique())
+col3.metric("Total Unique Items", filtered_data['itemDescription'].nunique())
+col4.metric("Avg Items / Transaction", f"{basket_oh.sum(axis=1).mean():.2f}")
+st.markdown("---")
+
+# -------------------------
 # Tabs
 # -------------------------
 tabs = st.tabs([
     "Raw Data", "Unique Items & Customers", "Transactions Overview", 
     "Top Items", "Customer Behavior", "Seasonal Trends", 
-    "Item Co-occurrence", "Basket Recommendations", "Top Bundles & Item Combos"
+    "Item Co-occurrence", "Basket Recommendations", "Top Bundles"
 ])
 
 # -------------------------
@@ -55,46 +97,42 @@ tabs = st.tabs([
 # -------------------------
 with tabs[0]:
     st.subheader("📋 Raw Dataset Preview")
-    st.dataframe(data.head(50))
-    st.write(f"Total rows: {len(data)}")
+    st.dataframe(filtered_data.head(50))
+    st.write(f"Total rows: {len(filtered_data)}")
 
 # -------------------------
 # 1️⃣ Unique Items & Customers
 # -------------------------
 with tabs[1]:
     st.subheader("🛒 All Unique Items")
-    st.dataframe(pd.DataFrame(data['itemDescription'].unique(), columns=["ItemDescription"]))
-    st.write(f"Total unique items: {data['itemDescription'].nunique()}")
+    st.dataframe(pd.DataFrame(filtered_data['itemDescription'].unique(), columns=["ItemDescription"]))
+    st.write(f"Total unique items: {filtered_data['itemDescription'].nunique()}")
 
     st.subheader("👥 All Unique Customers")
-    st.dataframe(pd.DataFrame(data['Member_number'].unique(), columns=["CustomerID"]))
-    st.write(f"Total unique customers: {data['Member_number'].nunique()}")
+    st.dataframe(pd.DataFrame(filtered_data['Member_number'].unique(), columns=["CustomerID"]))
+    st.write(f"Total unique customers: {filtered_data['Member_number'].nunique()}")
 
 # -------------------------
-# 2️⃣ Transactions Overview (Fixed Date Aggregation)
+# 2️⃣ Transactions Overview
 # -------------------------
 with tabs[2]:
     st.subheader("📈 Transactions Over Time")
     time_group = st.radio("Aggregate by:", ["Daily", "Weekly", "Monthly"])
-
-    filtered_data = data.copy()
     
     if time_group == "Daily":
         trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.date)['order_id'].count().reset_index()
         trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
         trans_time['timestamp'] = pd.to_datetime(trans_time['timestamp'])
         x_col = 'timestamp'
-
     elif time_group == "Weekly":
-        filtered_data['week_start'] = filtered_data['timestamp'] - pd.to_timedelta(filtered_data['timestamp'].dt.weekday, unit='d')
-        trans_time = filtered_data.groupby('week_start')['order_id'].count().reset_index()
-        trans_time.rename(columns={'order_id':'transactions','week_start':'timestamp'}, inplace=True)
+        trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.isocalendar().week)['order_id'].count().reset_index()
+        trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
+        trans_time['timestamp'] = pd.to_datetime(filtered_data['timestamp'])
         x_col = 'timestamp'
-
-    else:  # Monthly
-        filtered_data['month'] = filtered_data['timestamp'].dt.to_period('M').dt.to_timestamp()
-        trans_time = filtered_data.groupby('month')['order_id'].count().reset_index()
-        trans_time.rename(columns={'order_id':'transactions','month':'timestamp'}, inplace=True)
+    else:
+        trans_time = filtered_data.groupby(filtered_data['timestamp'].dt.to_period("M"))['order_id'].count().reset_index()
+        trans_time.rename(columns={'order_id':'transactions'}, inplace=True)
+        trans_time['timestamp'] = trans_time['timestamp'].astype(str)
         x_col = 'timestamp'
 
     fig = px.line(trans_time, x=x_col, y='transactions', title="Transactions Over Time", template="plotly_white")
@@ -118,8 +156,8 @@ with tabs[3]:
     st.plotly_chart(fig2, use_container_width=True)
 
     st.subheader("📈 Item Popularity Over Time")
-    selected_item = st.selectbox("Select an item to see trends:", item_cols)
-    item_trend = data[data['itemDescription'] == selected_item].groupby(data['timestamp'].dt.to_period("M"))['order_id'].count()
+    selected_item = st.selectbox("Select an item to see trends:", item_cols_filtered)
+    item_trend = filtered_data[filtered_data['itemDescription'] == selected_item].groupby(filtered_data['timestamp'].dt.to_period("M"))['order_id'].count()
     fig_item_trend = px.line(item_trend, x=item_trend.index.astype(str), y=item_trend.values,
                              labels={'x':'Month','y':'Transactions'}, title=f"{selected_item} Monthly Trend", template="plotly_white")
     st.plotly_chart(fig_item_trend, use_container_width=True)
@@ -129,7 +167,7 @@ with tabs[3]:
 # -------------------------
 with tabs[4]:
     st.subheader("👥 Customer Behavior")
-    cust_orders = data.groupby('Member_number')['order_id'].nunique()
+    cust_orders = filtered_data.groupby('Member_number')['order_id'].nunique()
     repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
     fig3 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values,
                   title="Repeat vs First-time Customers", template="plotly_white")
@@ -150,7 +188,7 @@ with tabs[4]:
 # -------------------------
 with tabs[5]:
     st.subheader("📅 Monthly Seasonal Trends")
-    monthly_sales = data.groupby(data['timestamp'].dt.month)['order_id'].count()
+    monthly_sales = filtered_data.groupby(filtered_data['timestamp'].dt.month)['order_id'].count()
     fig4 = px.line(monthly_sales, x=monthly_sales.index, y=monthly_sales.values,
                    labels={'x':'Month', 'y':'Number of Transactions'}, title="Monthly Transaction Trend", template="plotly_white")
     st.plotly_chart(fig4, use_container_width=True)
@@ -165,7 +203,7 @@ with tabs[6]:
     co_occurrence = basket_items[top_items].T.dot(basket_items[top_items])
     co_occurrence_pct = (co_occurrence / basket_items.shape[0] * 100).astype(float)
     fig5, ax5 = plt.subplots(figsize=(12,10))
-    sns.heatmap(co_occurrence_pct, annot=False, fmt=".1f", cmap="YlGnBu", ax=ax5)
+    sns.heatmap(co_occurrence_pct, annot=False, cmap="YlGnBu", ax=ax5)
     ax5.set_title("Item Co-occurrence (% of transactions)")
     st.pyplot(fig5)
 
@@ -174,7 +212,7 @@ with tabs[6]:
 # -------------------------
 with tabs[7]:
     st.subheader("🛍️ Market Basket Recommendations")
-    selected_items = st.multiselect("Select items in your basket:", options=item_cols)
+    selected_items = st.multiselect("Select items in your basket:", options=item_cols_filtered)
     min_conf = st.slider("Minimum confidence", 0.0, 1.0, 0.3)
     min_lift = st.slider("Minimum lift", 0.0, 5.0, 1.0)
 
@@ -203,7 +241,7 @@ with tabs[7]:
 # -------------------------
 with tabs[8]:
     st.subheader("📦 Top Bundles & Frequently Bought Together")
-    selected_item_combo = st.selectbox("Select an item to see popular bundles:", options=item_cols)
+    selected_item_combo = st.selectbox("Select an item to see popular bundles:", options=item_cols_filtered)
     top_n_bundles = st.slider("Top bundles to show:", 3, 15, 5)
 
     transactions_with_item = basket_oh[basket_oh[selected_item_combo] == 1]
@@ -224,4 +262,4 @@ with tabs[8]:
     else:
         st.info(f"No co-occurring items found for '{selected_item_combo}'.")
 
-st.caption("📘 Dashboard: Raw Data | Unique Items & Customers | Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations | Top Bundles & Item Combos")
+st.caption("📘 Dashboard Tabs: Raw Data | Unique Items & Customers | Transactions | Top Items | Customer Behavior | Seasonal Trends | Co-occurrence | Recommendations | Top Bundles")
