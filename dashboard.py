@@ -13,12 +13,12 @@ st.title("🛍️ Online Retail Analytics Dashboard")
 # -------------------------
 @st.cache_data
 def load_data():
+    # Load your existing CSVs
     basket = pd.read_csv("groceries_basket.csv", index_col=0)
     rules = pd.read_csv("association_rules.csv")
     rules.columns = rules.columns.str.strip().str.lower()
 
-    # Simulate additional columns for evaluation purposes
-    # Timestamp: random dates over the last year
+    # Simulate extra columns if missing
     np.random.seed(42)
     basket['order_id'] = basket.index
     basket['customer_id'] = np.random.randint(1, basket.shape[0]//2, size=basket.shape[0])
@@ -26,7 +26,7 @@ def load_data():
         np.random.choice(pd.date_range("2024-01-01", "2024-12-31"), size=basket.shape[0])
     )
     basket['city'] = np.random.choice(['Manila','Cebu','Davao','Quezon','Baguio'], size=basket.shape[0])
-    basket['promotion'] = np.random.choice([True, False], size=basket.shape[0])
+    basket['promotion'] = np.random.choice([0, 1], size=basket.shape[0])
     basket['return'] = np.random.choice([0,1], size=basket.shape[0], p=[0.9,0.1])
     basket['price'] = np.random.randint(5, 100, size=basket.shape[0])  # simulate prices
 
@@ -35,18 +35,21 @@ def load_data():
 basket, rules = load_data()
 
 # -------------------------
-# Tabs for sections
+# Tabs
 # -------------------------
 tabs = st.tabs(["Sales & Revenue", "Customer Behavior", "Product Performance", "Marketing & Engagement", "Basket Analysis"])
 
-# ---------------------------------
+# -------------------------
 # 1️⃣ Sales & Revenue
-# ---------------------------------
+# -------------------------
 with tabs[0]:
     st.subheader("💰 Sales & Revenue Overview")
-    basket['revenue'] = basket.sum(axis=1, numeric_only=True) + basket['price']
-    
-    time_group = st.radio("Aggregate by:", ["Daily", "Monthly", "Yearly"])
+    # Total revenue per order
+    item_cols = [col for col in basket.columns if col not in ['order_id','customer_id','timestamp','city','promotion','return','price']]
+    basket['revenue'] = basket[item_cols].sum(axis=1) * basket['price']
+
+    # Aggregate by time
+    time_group = st.radio("Aggregate revenue by:", ["Daily", "Monthly", "Yearly"])
     if time_group == "Daily":
         revenue_time = basket.groupby(basket['timestamp'].dt.date)['revenue'].sum().reset_index()
         x_col = 'timestamp'
@@ -62,33 +65,29 @@ with tabs[0]:
 
     # Top products by revenue
     st.subheader("🛒 Top Products by Revenue")
-    item_revenue = (basket.drop(columns=['order_id','customer_id','timestamp','city','promotion','return','price'])
-                    .sum(axis=0) * basket['price'].mean()).sort_values(ascending=False)
+    item_revenue = (basket[item_cols].sum(axis=0) * basket['price'].mean()).sort_values(ascending=False)
     top_n = st.slider("Top products to show:", 5, 30, 10)
     fig2 = px.bar(item_revenue.head(top_n), x=item_revenue.head(top_n).index, y=item_revenue.head(top_n).values, 
                   labels={'x':'Product','y':'Revenue'}, title="Top Products by Revenue")
     st.plotly_chart(fig2, use_container_width=True)
 
-# ---------------------------------
+# -------------------------
 # 2️⃣ Customer Behavior
-# ---------------------------------
+# -------------------------
 with tabs[1]:
     st.subheader("👥 Customer Behavior")
-    # Repeat vs first-time buyers
     cust_orders = basket.groupby('customer_id')['order_id'].nunique()
     repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
     fig3 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values, title="Repeat vs First-time Customers")
     st.plotly_chart(fig3, use_container_width=True)
 
-    # Top cities
     st.subheader("Top Cities by Transactions")
     top_cities = basket.groupby('city')['order_id'].nunique().sort_values(ascending=False)
     fig4 = px.bar(top_cities, x=top_cities.index, y=top_cities.values, title="Top Cities by Transaction Count")
     st.plotly_chart(fig4, use_container_width=True)
 
-    # Basket size distribution
     st.subheader("Basket Size Distribution")
-    basket_sizes = basket.drop(columns=['order_id','customer_id','timestamp','city','promotion','return','price']).sum(axis=1)
+    basket_sizes = basket[item_cols].sum(axis=1)
     fig5, ax5 = plt.subplots(figsize=(10,5))
     sns.histplot(basket_sizes, bins=20, kde=True, color="green", ax=ax5)
     ax5.set_xlabel("Number of Items per Basket")
@@ -96,45 +95,43 @@ with tabs[1]:
     ax5.set_title("Basket Size Distribution")
     st.pyplot(fig5)
 
-# ---------------------------------
+# -------------------------
 # 3️⃣ Product Performance
-# ---------------------------------
+# -------------------------
 with tabs[2]:
     st.subheader("📦 Product Performance")
     # Return rates
-    st.subheader("Top Products by Return Rate")
-    return_cols = basket.drop(columns=['order_id','customer_id','timestamp','city','promotion','price']).columns
-    return_rates = basket[return_cols].multiply(basket['return'], axis=0).sum().sort_values(ascending=False)
+    return_rates = basket[item_cols].multiply(basket['return'], axis=0).sum().sort_values(ascending=False)
     fig6 = px.bar(return_rates.head(top_n), x=return_rates.head(top_n).index, y=return_rates.head(top_n).values, 
                   title="Top Products by Return Rate")
     st.plotly_chart(fig6, use_container_width=True)
 
     # Co-occurrence heatmap
     st.subheader("Item Co-occurrence Heatmap")
-    co_occurrence = basket[return_cols].T.dot(basket[return_cols])
-    co_occurrence_pct = co_occurrence / basket.shape[0] * 100
+    basket_items = basket[item_cols].apply(pd.to_numeric, errors='coerce').fillna(0).astype(float)
+    co_occurrence = basket_items.T.dot(basket_items)
+    co_occurrence_pct = (co_occurrence / basket_items.shape[0] * 100).astype(float)
     fig7, ax7 = plt.subplots(figsize=(12,10))
     sns.heatmap(co_occurrence_pct, annot=True, fmt=".1f", cmap="YlGnBu", ax=ax7)
     ax7.set_title("Item Co-occurrence (% of transactions)")
     st.pyplot(fig7)
 
-# ---------------------------------
+# -------------------------
 # 4️⃣ Marketing & Engagement
-# ---------------------------------
+# -------------------------
 with tabs[3]:
     st.subheader("📣 Marketing & Engagement")
-    if 'promotion' in basket.columns:
-        promo_sales = basket.groupby('promotion')['revenue'].sum()
-        fig8 = px.bar(promo_sales, x=promo_sales.index, y=promo_sales.values, labels={'x':'Promotion','y':'Revenue'},
-                      title="Revenue by Promotion")
-        st.plotly_chart(fig8, use_container_width=True)
+    promo_sales = basket.groupby('promotion')['revenue'].sum()
+    fig8 = px.bar(promo_sales, x=promo_sales.index, y=promo_sales.values, labels={'x':'Promotion','y':'Revenue'},
+                  title="Revenue by Promotion")
+    st.plotly_chart(fig8, use_container_width=True)
 
-# ---------------------------------
+# -------------------------
 # 5️⃣ Market Basket Recommendations
-# ---------------------------------
+# -------------------------
 with tabs[4]:
     st.subheader("🛍️ Market Basket Recommendations")
-    selected_items = st.multiselect("Select items in your basket:", options=basket.drop(columns=['order_id','customer_id','timestamp','city','promotion','return','price']).columns)
+    selected_items = st.multiselect("Select items in your basket:", options=item_cols)
 
     if selected_items:
         recommended_rules = rules[
