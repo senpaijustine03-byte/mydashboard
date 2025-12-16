@@ -22,21 +22,30 @@ st.markdown("Interactive analysis of grocery transactions using Association Rule
 def load_data():
     basket = pd.read_csv("groceries_basket.csv", index_col=0)
     rules = pd.read_csv("association_rules.csv")
+    # Strip whitespace and normalize column names
+    rules.columns = rules.columns.str.strip().str.lower()
     return basket, rules
 
 basket, rules = load_data()
 
 # --------------------------------
+# Debug: show column names (optional)
+# --------------------------------
+# st.subheader("🛠️ Debug: Rule Columns")
+# st.write(rules.columns.tolist())
+
+# --------------------------------
 # Clean rule text
 # --------------------------------
 for col in ["antecedents", "consequents"]:
-    rules[col] = (
-        rules[col]
-        .astype(str)
-        .str.replace("frozenset({", "", regex=False)
-        .str.replace("})", "", regex=False)
-        .str.replace("'", "", regex=False)
-    )
+    if col in rules.columns:
+        rules[col] = (
+            rules[col]
+            .astype(str)
+            .str.replace("frozenset({", "", regex=False)
+            .str.replace("})", "", regex=False)
+            .str.replace("'", "", regex=False)
+        )
 
 # --------------------------------
 # KPI METRICS
@@ -79,6 +88,12 @@ st.divider()
 # Rule Filters
 # --------------------------------
 st.subheader("🎛️ Filter Association Rules")
+
+# Ensure columns exist before filtering
+for col in ["support", "confidence", "lift"]:
+    if col not in rules.columns:
+        rules[col] = 0.0
+
 min_support = st.slider("Minimum Support", 0.0, 1.0, 0.01, 0.01)
 min_confidence = st.slider("Minimum Confidence", 0.0, 1.0, 0.1, 0.05)
 min_lift = st.slider("Minimum Lift", 0.0, 5.0, 1.0, 0.1)
@@ -111,29 +126,26 @@ st.subheader("🤖 Automatic Insights")
 if len(filtered_rules) == 0:
     st.warning("No rules match the selected criteria.")
 else:
-    strongest_rule = filtered_rules.sort_values("lift", ascending=False).iloc[0]
-    most_confident_rule = filtered_rules.sort_values("confidence", ascending=False).iloc[0]
-    most_frequent_rule = filtered_rules.sort_values("support", ascending=False).iloc[0]
+    def safe_rule(df, sort_col):
+        return df.sort_values(sort_col, ascending=False).iloc[0] if sort_col in df.columns else None
 
-    st.markdown(
-        f"""
-### 🔎 Key Insights
+    strongest_rule = safe_rule(filtered_rules, "lift")
+    most_confident_rule = safe_rule(filtered_rules, "confidence")
+    most_frequent_rule = safe_rule(filtered_rules, "support")
 
-**1️⃣ Strongest Relationship (Highest Lift)**  
-Customers who buy **{strongest_rule['antecedents']}** are  
-**{strongest_rule['lift']:.2f}× more likely** to also buy  
-**{strongest_rule['consequents']}** than average.
-
-**2️⃣ Most Reliable Rule (Highest Confidence)**  
-When **{most_confident_rule['antecedents']}** is purchased,  
-**{most_confident_rule['confidence']:.1%}** of the time customers also buy  
-**{most_confident_rule['consequents']}**.
-
-**3️⃣ Most Frequent Rule (Highest Support)**  
-The combination **{most_frequent_rule['antecedents']} → {most_frequent_rule['consequents']}**  
-appears in **{most_frequent_rule['support']:.1%}** of all transactions.
-        """
-    )
+    st.markdown("### 🔎 Key Insights")
+    if strongest_rule is not None:
+        st.markdown(
+            f"**1️⃣ Strongest Relationship (Highest Lift)**: Customers who buy **{strongest_rule['antecedents']}** are **{strongest_rule['lift']:.2f}× more likely** to buy **{strongest_rule['consequents']}**."
+        )
+    if most_confident_rule is not None:
+        st.markdown(
+            f"**2️⃣ Most Reliable Rule (Highest Confidence)**: When **{most_confident_rule['antecedents']}** is purchased, **{most_confident_rule['confidence']:.1%}** of the time customers also buy **{most_confident_rule['consequents']}**."
+        )
+    if most_frequent_rule is not None:
+        st.markdown(
+            f"**3️⃣ Most Frequent Rule (Highest Support)**: The combination **{most_frequent_rule['antecedents']} → {most_frequent_rule['consequents']}** appears in **{most_frequent_rule['support']:.1%}** of all transactions."
+        )
 
 st.divider()
 
@@ -169,7 +181,6 @@ st.divider()
 # Rule Recommendation System (Market Basket Assistant)
 # --------------------------------
 st.subheader("🛍️ Market Basket Recommendations")
-
 selected_items = st.multiselect(
     "Select items you have in your basket:",
     options=basket.columns
@@ -178,7 +189,11 @@ selected_items = st.multiselect(
 if selected_items:
     recommended_rules = filtered_rules[
         filtered_rules["antecedents"].apply(lambda x: any(item in x.split(", ") for item in selected_items))
-    ].sort_values(by=["confidence", "lift"], ascending=False)
+    ]
+    # Safe sort: only use existing columns
+    sort_cols = [col for col in ["confidence", "lift"] if col in recommended_rules.columns]
+    if sort_cols:
+        recommended_rules = recommended_rules.sort_values(by=sort_cols, ascending=False)
 
     if not recommended_rules.empty:
         top_recommendations = recommended_rules.head(10)
