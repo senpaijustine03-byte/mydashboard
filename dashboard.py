@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.express as px
 
 # --------------------------------
 # Page Configuration
@@ -12,7 +13,7 @@ st.set_page_config(
 )
 
 st.title("🛒 Groceries Transaction Dataset Dashboard")
-st.markdown("Automatic insights and visualization of grocery transactions using Association Rule Mining")
+st.markdown("Interactive analysis of grocery transactions using Association Rule Mining")
 
 # --------------------------------
 # Load Data
@@ -41,7 +42,6 @@ for col in ["antecedents", "consequents"]:
 # KPI METRICS
 # --------------------------------
 st.subheader("📌 Dataset Overview")
-
 c1, c2, c3 = st.columns(3)
 c1.metric("Total Transactions", basket.shape[0])
 c2.metric("Unique Items", basket.shape[1])
@@ -52,8 +52,7 @@ st.divider()
 # --------------------------------
 # Item Frequency
 # --------------------------------
-st.subheader("📦 Item Frequency")
-
+st.subheader("📦 Item Frequency Analysis")
 item_counts = basket.sum().sort_values(ascending=False)
 top_n = st.slider("Top items to display", 5, 30, 15)
 
@@ -63,13 +62,23 @@ ax1.set_ylabel("Frequency")
 ax1.set_title(f"Top {top_n} Most Purchased Items")
 st.pyplot(fig1)
 
+# --------------------------------
+# Item Search
+# --------------------------------
+st.subheader("🔍 Search Item Frequency")
+item_name = st.selectbox("Select an item", item_counts.index)
+st.write(
+    f"**{item_name}** appears in "
+    f"**{int(item_counts[item_name])}** transactions "
+    f"({item_counts[item_name] / basket.shape[0]:.2%})"
+)
+
 st.divider()
 
 # --------------------------------
 # Rule Filters
 # --------------------------------
 st.subheader("🎛️ Filter Association Rules")
-
 min_support = st.slider("Minimum Support", 0.0, 1.0, 0.01, 0.01)
 min_confidence = st.slider("Minimum Confidence", 0.0, 1.0, 0.1, 0.05)
 min_lift = st.slider("Minimum Lift", 0.0, 5.0, 1.0, 0.1)
@@ -83,13 +92,22 @@ filtered_rules = rules[
 st.write(f"📊 Showing **{len(filtered_rules)}** rules")
 st.dataframe(filtered_rules, use_container_width=True)
 
+# --------------------------------
+# Download Button
+# --------------------------------
+st.download_button(
+    "⬇️ Download Filtered Rules",
+    filtered_rules.to_csv(index=False),
+    file_name="filtered_association_rules.csv",
+    mime="text/csv"
+)
+
 st.divider()
 
 # --------------------------------
-# 🤖 AUTOMATIC INSIGHTS SECTION
+# Automatic Insights
 # --------------------------------
 st.subheader("🤖 Automatic Insights")
-
 if len(filtered_rules) == 0:
     st.warning("No rules match the selected criteria.")
 else:
@@ -120,29 +138,33 @@ appears in **{most_frequent_rule['support']:.1%}** of all transactions.
 st.divider()
 
 # --------------------------------
-# Visualization: Confidence vs Lift
+# Interactive Rule Strength Visualization (Plotly)
 # --------------------------------
-st.subheader("📈 Rule Strength Visualization")
+st.subheader("📈 Interactive Rule Strength Visualization")
 
-fig2, ax2 = plt.subplots(figsize=(10, 6))
-sns.scatterplot(
-    data=filtered_rules,
-    x="confidence",
-    y="lift",
-    size="support",
-    hue="support",
-    palette="viridis",
-    legend=False,
-    ax=ax2
-)
-
-ax2.set_xlabel("Confidence")
-ax2.set_ylabel("Lift")
-ax2.set_title("Confidence vs Lift (Bubble Size = Support)")
-
-st.pyplot(fig2)
+if len(filtered_rules) > 0:
+    fig2 = px.scatter(
+        filtered_rules,
+        x="confidence",
+        y="lift",
+        size="support",
+        color="support",
+        hover_data=["antecedents", "consequents", "support", "confidence", "lift"],
+        color_continuous_scale="viridis",
+        size_max=30,
+        template="plotly_white"
+    )
+    fig2.update_layout(
+        title="Confidence vs Lift (Bubble Size = Support)",
+        xaxis_title="Confidence",
+        yaxis_title="Lift",
+        legend_title="Support"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+else:
+    st.info("No rules to display in the plot with current filters.")
 
 # --------------------------------
 # Footer
 # --------------------------------
-st.caption("📘 Association Rule Mining Dashboard | Automatic Insight Generation")
+st.caption("📘 Association Rule Mining Dashboard | Automatic Insight Generation | Interactive Plots")
