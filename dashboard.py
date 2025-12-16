@@ -6,14 +6,14 @@ import plotly.express as px
 from mlxtend.frequent_patterns import apriori, association_rules
 
 st.set_page_config(page_title="Groceries Analytics Dashboard", layout="wide")
-st.title("🛍️ Groceries Analytics Dashboard")
+st.title("🛍️ Groceries Analytics Dashboard (Kaggle Dataset)")
 
 # -------------------------
 # Load and preprocess data
 # -------------------------
 @st.cache_data
 def load_data():
-    data = pd.read_csv("Groceries_dataset.csv")  # Kaggle dataset
+    data = pd.read_csv("Groceries_dataset.csv")
     data['timestamp'] = pd.to_datetime(data['Date'])
     data['order_id'] = data['Member_number']
     return data
@@ -29,7 +29,7 @@ basket_oh = basket_oh.applymap(lambda x: 1 if x > 0 else 0)
 item_cols = basket_oh.columns.tolist()
 
 # -------------------------
-# Generate association rules
+# Generate real association rules
 # -------------------------
 @st.cache_data
 def generate_rules(basket_oh):
@@ -44,7 +44,7 @@ rules = generate_rules(basket_oh)
 # -------------------------
 # Tabs
 # -------------------------
-tabs = st.tabs(["Transactions Overview", "Customer Behavior", "Product Performance", "Basket Analysis"])
+tabs = st.tabs(["Transactions Overview", "Top Items", "Item Co-occurrence", "Basket Recommendations"])
 
 # -------------------------
 # 1️⃣ Transactions Overview
@@ -71,6 +71,10 @@ with tabs[0]:
     fig = px.line(trans_time, x=x_col, y='transactions', title="Transactions Over Time")
     st.plotly_chart(fig, use_container_width=True)
 
+# -------------------------
+# 2️⃣ Top Items
+# -------------------------
+with tabs[1]:
     st.subheader("🛒 Top Items by Frequency")
     item_freq = basket_oh.sum().sort_values(ascending=False)
     top_n = st.slider("Top items to show:", 5, 30, 10)
@@ -79,28 +83,17 @@ with tabs[0]:
     st.plotly_chart(fig2, use_container_width=True)
 
 # -------------------------
-# 2️⃣ Customer Behavior
-# -------------------------
-with tabs[1]:
-    st.subheader("👥 Customer Behavior")
-    cust_orders = data.groupby('Member_number')['order_id'].nunique()
-    repeat_status = cust_orders.apply(lambda x: "Repeat" if x>1 else "First-time").value_counts()
-    fig3 = px.pie(repeat_status, names=repeat_status.index, values=repeat_status.values,
-                  title="Repeat vs First-time Customers")
-    st.plotly_chart(fig3, use_container_width=True)
-
-# -------------------------
-# 3️⃣ Product Performance
+# 3️⃣ Item Co-occurrence Heatmap
 # -------------------------
 with tabs[2]:
     st.subheader("📊 Item Co-occurrence Heatmap")
     basket_items = basket_oh.astype(float)
     co_occurrence = basket_items.T.dot(basket_items)
     co_occurrence_pct = (co_occurrence / basket_items.shape[0] * 100).astype(float)
-    fig4, ax4 = plt.subplots(figsize=(12,10))
-    sns.heatmap(co_occurrence_pct, annot=False, fmt=".1f", cmap="YlGnBu", ax=ax4)
-    ax4.set_title("Item Co-occurrence (% of transactions)")
-    st.pyplot(fig4)
+    fig3, ax3 = plt.subplots(figsize=(12,10))
+    sns.heatmap(co_occurrence_pct, annot=False, fmt=".1f", cmap="YlGnBu", ax=ax3)
+    ax3.set_title("Item Co-occurrence (% of transactions)")
+    st.pyplot(fig3)
 
 # -------------------------
 # 4️⃣ Market Basket Recommendations
@@ -127,4 +120,4 @@ with tabs[3]:
     else:
         st.info("Select items from the basket to get recommendations.")
 
-st.caption("📘 Dashboard: Transactions | Customer Behavior | Product Performance | Basket Recommendations")
+st.caption("📘 Dashboard: Transactions | Top Items | Co-occurrence | Recommendations")
