@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("🛒 Groceries Transaction Dataset Dashboard")
-st.markdown("Interactive analysis of grocery transactions using Association Rule Mining")
+st.markdown("Automatic insights and visualization of grocery transactions using Association Rule Mining")
 
 # --------------------------------
 # Load Data
@@ -42,21 +42,20 @@ for col in ["antecedents", "consequents"]:
 # --------------------------------
 st.subheader("📌 Dataset Overview")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Transactions", basket.shape[0])
-col2.metric("Total Unique Items", basket.shape[1])
-col3.metric("Association Rules", rules.shape[0])
+c1, c2, c3 = st.columns(3)
+c1.metric("Total Transactions", basket.shape[0])
+c2.metric("Unique Items", basket.shape[1])
+c3.metric("Association Rules", rules.shape[0])
 
 st.divider()
 
 # --------------------------------
-# Item Frequency Analysis
+# Item Frequency
 # --------------------------------
-st.subheader("📦 Item Frequency Analysis")
+st.subheader("📦 Item Frequency")
 
 item_counts = basket.sum().sort_values(ascending=False)
-
-top_n = st.slider("Select number of top items", 5, 30, 15)
+top_n = st.slider("Top items to display", 5, 30, 15)
 
 fig1, ax1 = plt.subplots(figsize=(10, 5))
 item_counts.head(top_n).plot(kind="bar", ax=ax1)
@@ -64,30 +63,16 @@ ax1.set_ylabel("Frequency")
 ax1.set_title(f"Top {top_n} Most Purchased Items")
 st.pyplot(fig1)
 
-# --------------------------------
-# Item Search
-# --------------------------------
-st.subheader("🔍 Search Item Frequency")
-
-item_name = st.selectbox("Select an item", item_counts.index)
-
-st.write(
-    f"**{item_name}** appears in "
-    f"**{int(item_counts[item_name])}** transactions "
-    f"({item_counts[item_name] / basket.shape[0]:.2%})"
-)
-
 st.divider()
 
 # --------------------------------
-# Association Rules Table
+# Rule Filters
 # --------------------------------
-st.subheader("📊 Association Rules Explorer")
+st.subheader("🎛️ Filter Association Rules")
 
-with st.expander("Filter Rules"):
-    min_support = st.slider("Minimum Support", 0.0, 1.0, 0.01, 0.01)
-    min_confidence = st.slider("Minimum Confidence", 0.0, 1.0, 0.1, 0.05)
-    min_lift = st.slider("Minimum Lift", 0.0, 5.0, 1.0, 0.1)
+min_support = st.slider("Minimum Support", 0.0, 1.0, 0.01, 0.01)
+min_confidence = st.slider("Minimum Confidence", 0.0, 1.0, 0.1, 0.05)
+min_lift = st.slider("Minimum Lift", 0.0, 5.0, 1.0, 0.1)
 
 filtered_rules = rules[
     (rules["support"] >= min_support) &
@@ -95,18 +80,42 @@ filtered_rules = rules[
     (rules["lift"] >= min_lift)
 ]
 
-st.write(f"Showing **{len(filtered_rules)}** rules")
+st.write(f"📊 Showing **{len(filtered_rules)}** rules")
 st.dataframe(filtered_rules, use_container_width=True)
 
+st.divider()
+
 # --------------------------------
-# Download Button
+# 🤖 AUTOMATIC INSIGHTS SECTION
 # --------------------------------
-st.download_button(
-    "⬇️ Download Filtered Rules",
-    filtered_rules.to_csv(index=False),
-    file_name="filtered_association_rules.csv",
-    mime="text/csv"
-)
+st.subheader("🤖 Automatic Insights")
+
+if len(filtered_rules) == 0:
+    st.warning("No rules match the selected criteria.")
+else:
+    strongest_rule = filtered_rules.sort_values("lift", ascending=False).iloc[0]
+    most_confident_rule = filtered_rules.sort_values("confidence", ascending=False).iloc[0]
+    most_frequent_rule = filtered_rules.sort_values("support", ascending=False).iloc[0]
+
+    st.markdown(
+        f"""
+### 🔎 Key Insights
+
+**1️⃣ Strongest Relationship (Highest Lift)**  
+Customers who buy **{strongest_rule['antecedents']}** are  
+**{strongest_rule['lift']:.2f}× more likely** to also buy  
+**{strongest_rule['consequents']}** than average.
+
+**2️⃣ Most Reliable Rule (Highest Confidence)**  
+When **{most_confident_rule['antecedents']}** is purchased,  
+**{most_confident_rule['confidence']:.1%}** of the time customers also buy  
+**{most_confident_rule['consequents']}**.
+
+**3️⃣ Most Frequent Rule (Highest Support)**  
+The combination **{most_frequent_rule['antecedents']} → {most_frequent_rule['consequents']}**  
+appears in **{most_frequent_rule['support']:.1%}** of all transactions.
+        """
+    )
 
 st.divider()
 
@@ -116,7 +125,6 @@ st.divider()
 st.subheader("📈 Rule Strength Visualization")
 
 fig2, ax2 = plt.subplots(figsize=(10, 6))
-
 sns.scatterplot(
     data=filtered_rules,
     x="confidence",
@@ -128,13 +136,13 @@ sns.scatterplot(
     ax=ax2
 )
 
-ax2.set_title("Confidence vs Lift (Bubble size = Support)")
 ax2.set_xlabel("Confidence")
 ax2.set_ylabel("Lift")
+ax2.set_title("Confidence vs Lift (Bubble Size = Support)")
 
 st.pyplot(fig2)
 
 # --------------------------------
 # Footer
 # --------------------------------
-st.caption("📘 Educational Dashboard | Association Rule Mining using Apriori Algorithm")
+st.caption("📘 Association Rule Mining Dashboard | Automatic Insight Generation")
